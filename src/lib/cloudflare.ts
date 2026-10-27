@@ -60,7 +60,7 @@ export class CloudflareSyncProvider implements SyncProvider {
     // KV namespaces are provisioned with the Worker; nothing to create here.
   }
 
-  async head(): Promise<RemoteFileInfo | null> {
+  async head(_path: string): Promise<RemoteFileInfo | null> {
     const response = await this.request('/sync/meta')
     if (response.status === 404) return null
     if (!response.ok) throw new SyncError('server', `读取远程状态失败（${response.status}）。`)
@@ -72,7 +72,7 @@ export class CloudflareSyncProvider implements SyncProvider {
     }
   }
 
-  async get(): Promise<{ blob: Blob; etag: string | null }> {
+  async get(_path: string): Promise<{ blob: Blob; etag: string | null }> {
     const response = await this.request('/sync/vault')
     if (response.status === 404) throw new SyncError('not-found', '云端还没有数据。')
     if (!response.ok) throw new SyncError('server', `下载失败（${response.status}）。`)
