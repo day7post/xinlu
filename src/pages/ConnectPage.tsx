@@ -194,6 +194,7 @@ export function ConnectPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索摘要、原文或标签"
+            aria-label="搜索要连接的心锚"
           />
         </label>
 

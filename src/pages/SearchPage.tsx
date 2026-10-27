@@ -76,6 +76,7 @@ export function SearchPage() {
             updateParams(event.target.value, selectedTag)
           }}
           placeholder="想起什么，就搜什么"
+          aria-label="搜索心锚"
           autoFocus
         />
         {query && (

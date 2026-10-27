@@ -135,6 +135,7 @@ export function EditorPage() {
           </div>
           <textarea
             className="main-writing-area"
+            aria-label="心锚正文"
             value={content.text}
             onChange={(event) => patch({ text: event.target.value })}
             placeholder={

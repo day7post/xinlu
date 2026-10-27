@@ -26,6 +26,7 @@ export function AnchorDetailPage() {
   const item = useAnchor(anchorId)
   const { data, loading, deleteAnchor, restoreDeletedAnchor } = useVault()
   const [expanded, setExpanded] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   if (loading) return <LoadingScreen />
   if (!data || !anchorId || !item) {
@@ -72,17 +73,32 @@ export function AnchorDetailPage() {
         <button
           type="button"
           className="icon-button danger-hover"
-          onClick={() => {
-            if (window.confirm('移入回收站？30 天内可以恢复。')) {
-              deleteAnchor(anchor.id)
-              navigate('/')
-            }
-          }}
+          onClick={() => setConfirmingDelete((value) => !value)}
           aria-label="删除心锚"
+          aria-expanded={confirmingDelete}
         >
           <Trash2 size={20} />
         </button>
       </header>
+
+      {confirmingDelete && (
+        <div className="confirm-bar" role="alert">
+          <span>移入回收站？30 天内可以恢复。</span>
+          <button
+            type="button"
+            className="confirm-danger"
+            onClick={() => {
+              deleteAnchor(anchor.id)
+              navigate('/')
+            }}
+          >
+            确认删除
+          </button>
+          <button type="button" onClick={() => setConfirmingDelete(false)}>
+            取消
+          </button>
+        </div>
+      )}
 
       <article className="anchor-detail-card">
         <div className="detail-kicker">

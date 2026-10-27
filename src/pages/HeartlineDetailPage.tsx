@@ -14,6 +14,7 @@ export function HeartlineDetailPage() {
   const line = useHeartline(lineId)
   const { data, loading, updateLine, deleteLine } = useVault()
   const [editing, setEditing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [note, setNote] = useState(line?.note ?? '')
   const [type, setType] = useState<HeartlineType>(line?.type ?? 'cause')
   const [personValue, setPersonValue] = useState('')
@@ -84,17 +85,32 @@ export function HeartlineDetailPage() {
         <button
           type="button"
           className="icon-button danger-hover"
-          onClick={() => {
-            if (window.confirm('删除这条心线？30 天内可以恢复，两枚心锚本身不会删除。')) {
-              deleteLine(line.id)
-              navigate('/')
-            }
-          }}
+          onClick={() => setConfirmingDelete((value) => !value)}
           aria-label="删除心线"
+          aria-expanded={confirmingDelete}
         >
           <Trash2 size={20} />
         </button>
       </header>
+
+      {confirmingDelete && (
+        <div className="confirm-bar" role="alert">
+          <span>删除这条心线？30 天内可以恢复，两枚心锚本身不会删除。</span>
+          <button
+            type="button"
+            className="confirm-danger"
+            onClick={() => {
+              deleteLine(line.id)
+              navigate('/')
+            }}
+          >
+            确认删除
+          </button>
+          <button type="button" onClick={() => setConfirmingDelete(false)}>
+            取消
+          </button>
+        </div>
+      )}
 
       <section className="line-hero" style={{ '--relation-color': meta.color } as CSSProperties}>
         <span className="line-symbol">
