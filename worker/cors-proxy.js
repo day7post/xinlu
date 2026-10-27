@@ -21,16 +21,17 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, PUT, PROPFIND, MKCOL, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Authorization, Content-Type, Depth',
+          'Access-Control-Allow-Headers': 'Authorization, Content-Type, Depth, If-Match',
           'Access-Control-Max-Age': '86400',
         },
       })
     }
 
+    const hasBody = !['GET', 'HEAD'].includes(request.method)
     const upstream = await fetch(target, {
       method: request.method,
       headers: request.headers,
-      body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
+      body: hasBody ? await request.arrayBuffer() : undefined,
     })
 
     const headers = new Headers(upstream.headers)
