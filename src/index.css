@@ -483,6 +483,8 @@ button:disabled, .disabled { cursor: not-allowed; opacity: 0.5; }
 .isolated-item span { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .isolated-item small { flex: 0 0 auto; color: var(--ink-faint); font-size: 10px; }
 .export-actions { display: grid; gap: 8px; }
+.check-field { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; font-size: 12px; color: var(--ink-soft); line-height: 1.55; cursor: pointer; }
+.check-field input { margin-top: 2px; flex: 0 0 auto; width: 16px; height: 16px; accent-color: var(--accent-deep); }
 .header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .demo-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px auto 4px; max-width: 430px; }
 .demo-steps span { padding: 9px 6px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); font-size: 11px; color: var(--ink-soft); }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Archive,
@@ -9,6 +9,7 @@ import {
   HardDrive,
   KeyRound,
   LockKeyhole,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
   Sparkles,
@@ -17,9 +18,21 @@ import {
 } from 'lucide-react'
 import { HEARTLINE_META } from '../types'
 import { deriveSummary, getLatestRevision } from '../lib/domain'
+import { formatShortDate } from '../lib/date'
 import { buildMarkdownExport, buildPlainExport } from '../lib/export'
 import { hasDemoData } from '../lib/demo'
 import { downloadBlob } from '../lib/media'
+import {
+  decideSync,
+  loadSyncConfig,
+  loadSyncState,
+  REMOTE_VAULT_FILE,
+  saveSyncConfig,
+  saveSyncState,
+  setSessionSecrets,
+  type SyncConfig,
+} from '../lib/sync'
+import { WebDavProvider } from '../lib/webdav'
 import { useVault } from '../state/VaultContext'
 import { LoadingScreen } from '../components/LoadingScreen'
 
@@ -147,7 +160,7 @@ export function SettingsPage() {
       <header className="page-header">
         <p className="eyebrow">所有权与安全</p>
         <h1>我的资料</h1>
-        <p>这里没有账号，也没有陌生人。资料默认只属于当前设备。</p>
+        <p>本地使用不需要账号。资料默认只属于当前设备；跨端同步完全可选，同步的也只是密文。</p>
       </header>
 
       <section className="metric-grid">
@@ -317,6 +330,8 @@ export function SettingsPage() {
         )}
       </section>
 
+      <SyncSection />
+
       <section className="settings-section">
         <div className="section-title">
           <FileText size={19} />
@@ -388,4 +403,248 @@ function formatRemaining(deletedAt?: string): string {
     Math.ceil((Date.parse(deletedAt) + 30 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)),
   )
   return `还剩 ${remaining} 天`
+}
+
+function SyncSection() {
+  const { data, exportBackup, importBackup, vaultUpdatedAt } = useVault()
+  const [config, setConfig] = useState<SyncConfig>(() => loadSyncConfig())
+  const [appPassword, setAppPassword] = useState(() => loadSyncConfig().appPassword ?? '')
+  const [passphrase, setPassphrase] = useState('')
+  const [status, setStatus] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [conflict, setConflict] = useState(false)
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(() => loadSyncState().lastSyncAt)
+  const conflictBlobRef = useRef<Blob | null>(null)
+  const conflictEtagRef = useRef<string | null>(null)
+
+  const buildProvider = () =>
+    new WebDavProvider({
+      server: config.server.trim(),
+      username: config.username.trim(),
+      appPassword,
+      dir: config.dir.trim() || 'xinlu',
+    })
+
+  const validate = (): string | null => {
+    if (!config.server.trim()) return '请先填写 WebDAV 服务器地址。'
+    if (!config.username.trim()) return '请先填写账号（坚果云为注册邮箱）。'
+    if (!appPassword) return '请先填写应用密码。'
+    if (passphrase.length < 8) return '同步口令至少需要 8 个字符（与备份口令同一套规则）。'
+    return null
+  }
+
+  const finishSync = (etag: string | null, message: string) => {
+    const state = loadSyncState()
+    const now = new Date().toISOString()
+    saveSyncState({ ...state, lastEtag: etag, lastSyncAt: now })
+    setLastSyncAt(now)
+    setSessionSecrets({ appPassword, passphrase })
+    setConflict(false)
+    conflictBlobRef.current = null
+    setStatus(message)
+  }
+
+  const doPush = async (provider: WebDavProvider) => {
+    const blob = await exportBackup(passphrase)
+    const result = await provider.put(REMOTE_VAULT_FILE, blob)
+    const etag = result.etag ?? (await provider.head(REMOTE_VAULT_FILE))?.etag ?? null
+    finishSync(etag, '已把本机密文推送到云端。在另一台设备上用同一账号与同步口令即可拉取。')
+  }
+
+  const doPull = async (blob: Blob, etag: string | null) => {
+    await importBackup(new File([blob], REMOTE_VAULT_FILE), passphrase)
+    finishSync(etag, '已从云端拉取并解密，本机资料已更新为云端版本。')
+  }
+
+  const runSync = async (force?: 'push' | 'pull') => {
+    const invalid = validate()
+    if (invalid) {
+      setError(invalid)
+      setStatus('')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setStatus('')
+    try {
+      const provider = buildProvider()
+      await provider.ensureDir()
+      const state = loadSyncState()
+
+      if (force === 'push') {
+        await doPush(provider)
+        return
+      }
+      if (force === 'pull' && conflictBlobRef.current) {
+        await doPull(conflictBlobRef.current, conflictEtagRef.current)
+        return
+      }
+
+      const info = await provider.head(REMOTE_VAULT_FILE)
+      const remoteExists = Boolean(info)
+      const remoteChanged = remoteExists && info?.etag !== state.lastEtag
+      const hasContent = Boolean(
+        data && (data.anchors.length > 0 || data.heartlines.length > 0 || data.persons.length > 0),
+      )
+      const updatedAt = vaultUpdatedAt()
+      const localDirty = state.lastSyncAt
+        ? Boolean(updatedAt && updatedAt > state.lastSyncAt)
+        : hasContent
+      const decision = decideSync({ remoteExists, remoteChanged, localDirty })
+
+      if (decision === 'push-first' || decision === 'push') {
+        await doPush(provider)
+      } else if (decision === 'pull') {
+        const { blob, etag } = await provider.get(REMOTE_VAULT_FILE)
+        await doPull(blob, etag ?? info?.etag ?? null)
+      } else if (decision === 'conflict') {
+        const { blob, etag } = await provider.get(REMOTE_VAULT_FILE)
+        conflictBlobRef.current = blob
+        conflictEtagRef.current = etag ?? info?.etag ?? null
+        setConflict(true)
+        setStatus('两边都改过。为了不丢数据，请选一个为准：以本机为准会用本机密文覆盖云端；以云端为准会用云端密文覆盖本机。')
+      } else {
+        setStatus('已是最新，本机与云端没有差异。')
+        setSessionSecrets({ appPassword, passphrase })
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '同步没有成功。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const testConnection = async () => {
+    if (!config.server.trim() || !config.username.trim() || !appPassword) {
+      setError('先填写服务器地址、账号和应用密码，再测试连接。')
+      setStatus('')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setStatus('')
+    try {
+      await buildProvider().testConnection()
+      setStatus('连接成功，账号与应用密码可用。')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '连接失败。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const persistConfig = () => {
+    saveSyncConfig({ ...config, appPassword: config.rememberPassword ? appPassword : undefined })
+    setStatus('同步设置已保存在这台设备上。同步口令不会保存，每次同步时输入。')
+    setError('')
+  }
+
+  return (
+    <section className="settings-section">
+      <div className="section-title">
+        <RefreshCw size={19} />
+        <h2>跨端同步（WebDAV）</h2>
+      </div>
+      <p className="settings-description">
+        可选功能。用你自己的 WebDAV 网盘（例如坚果云）在多台设备间同步：上传的始终是与加密备份同一种密文，服务器看不到内容。注意：坚果云没有开放浏览器跨域，网页直连会被拦截，需要改用支持跨域的 WebDAV，或把你自己的代理地址填在服务器地址里。
+      </p>
+
+      <label className="field">
+        <span>服务器地址</span>
+        <input
+          value={config.server}
+          onChange={(event) => setConfig({ ...config, server: event.target.value })}
+          placeholder="https://dav.jianguoyun.com/dav/"
+          autoComplete="url"
+        />
+      </label>
+      <label className="field">
+        <span>账号</span>
+        <input
+          value={config.username}
+          onChange={(event) => setConfig({ ...config, username: event.target.value })}
+          placeholder="坚果云为注册邮箱"
+          autoComplete="username"
+        />
+      </label>
+      <label className="field">
+        <span>应用密码</span>
+        <input
+          type="password"
+          value={appPassword}
+          onChange={(event) => setAppPassword(event.target.value)}
+          placeholder="在网盘网页版生成，不是登录密码"
+          autoComplete="current-password"
+        />
+      </label>
+      <label className="field">
+        <span>远程目录</span>
+        <input
+          value={config.dir}
+          onChange={(event) => setConfig({ ...config, dir: event.target.value })}
+          placeholder="xinlu"
+        />
+      </label>
+      <label className="field">
+        <span>
+          <KeyRound size={15} />
+          同步口令
+        </span>
+        <input
+          type="password"
+          value={passphrase}
+          onChange={(event) => setPassphrase(event.target.value)}
+          placeholder="至少 8 个字符，每台设备用同一个"
+          autoComplete="new-password"
+        />
+      </label>
+      <label className="check-field">
+        <input
+          type="checkbox"
+          checked={config.rememberPassword}
+          onChange={(event) => setConfig({ ...config, rememberPassword: event.target.checked })}
+        />
+        <span>记住应用密码（保存在这台设备的浏览器里，方便下次同步；同步口令永不保存）</span>
+      </label>
+
+      <div className="export-actions">
+        <button className="secondary-button wide" type="button" onClick={persistConfig} disabled={busy}>
+          保存设置
+        </button>
+        <button className="secondary-button wide" type="button" onClick={testConnection} disabled={busy}>
+          测试连接
+        </button>
+        <button className="primary-button wide" type="button" onClick={() => void runSync()} disabled={busy}>
+          <RefreshCw size={17} />
+          {busy ? '正在同步…' : '立即同步'}
+        </button>
+      </div>
+
+      {conflict && (
+        <div className="export-actions">
+          <button className="secondary-button wide" type="button" onClick={() => void runSync('push')} disabled={busy}>
+            以本机为准（覆盖云端）
+          </button>
+          <button className="secondary-button wide" type="button" onClick={() => void runSync('pull')} disabled={busy}>
+            以云端为准（覆盖本机）
+          </button>
+        </div>
+      )}
+
+      {lastSyncAt && <p className="settings-description">上次同步：{formatShortDate(lastSyncAt)}</p>}
+      {status && (
+        <p className="form-success">
+          <CheckCircle2 size={16} />
+          {status}
+        </p>
+      )}
+      {error && (
+        <p className="form-error">
+          <AlertTriangle size={16} />
+          {error}
+        </p>
+      )}
+    </section>
+  )
 }

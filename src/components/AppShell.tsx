@@ -60,7 +60,7 @@ export function AppShell() {
         </nav>
         <div className="privacy-note">
           <Database size={17} />
-          <span>只保存在这台设备</span>
+          <span>默认只保存在这台设备</span>
           <small>{data ? `${data.anchors.filter((anchor) => !anchor.deletedAt && anchor.status === 'active').length} 枚心锚` : '准备中'}</small>
         </div>
       </aside>

@@ -80,6 +80,7 @@ interface VaultContextValue {
   importBackup: (file: File, passphrase: string) => Promise<void>
   clearEverything: () => Promise<void>
   seedDemo: () => { ok: boolean; message?: string }
+  vaultUpdatedAt: () => string | null
 }
 
 const VaultContext = createContext<VaultContextValue | null>(null)
@@ -263,6 +264,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     return { ok: true }
   }
 
+  const vaultUpdatedAt = (): string | null => dataRef.current?.updatedAt ?? null
+
   const clearEverything = async () => {
     await clearLocalData()
     setVault({
@@ -300,6 +303,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         importBackup,
         clearEverything,
         seedDemo,
+        vaultUpdatedAt,
       }}
     >
       {children}
