@@ -12,7 +12,11 @@ export interface SyncProvider {
   testConnection(): Promise<void>
 }
 
+export type SyncProviderKind = 'cloudflare' | 'webdav'
+
 export interface SyncConfig {
+  providerKind: SyncProviderKind
+  workerUrl: string
   server: string
   username: string
   dir: string
@@ -49,6 +53,8 @@ export function loadSyncConfig(): SyncConfig {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SyncConfig>
       return {
+        providerKind: parsed.providerKind === 'webdav' ? 'webdav' : 'cloudflare',
+        workerUrl: parsed.workerUrl ?? '',
         server: parsed.server ?? 'https://dav.jianguoyun.com/dav/',
         username: parsed.username ?? '',
         dir: parsed.dir ?? 'xinlu',
@@ -59,7 +65,14 @@ export function loadSyncConfig(): SyncConfig {
   } catch {
     // corrupted config falls back to defaults
   }
-  return { server: 'https://dav.jianguoyun.com/dav/', username: '', dir: 'xinlu', rememberPassword: false }
+  return {
+    providerKind: 'cloudflare',
+    workerUrl: '',
+    server: 'https://dav.jianguoyun.com/dav/',
+    username: '',
+    dir: 'xinlu',
+    rememberPassword: false,
+  }
 }
 
 export function saveSyncConfig(config: SyncConfig): void {

@@ -33,6 +33,8 @@ import {
   type SyncConfig,
 } from '../lib/sync'
 import { WebDavProvider } from '../lib/webdav'
+import { CloudflareSyncProvider, deriveSyncToken } from '../lib/cloudflare'
+import type { SyncProvider } from '../lib/sync'
 import { useVault } from '../state/VaultContext'
 import { LoadingScreen } from '../components/LoadingScreen'
 
@@ -417,19 +419,29 @@ function SyncSection() {
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(() => loadSyncState().lastSyncAt)
   const conflictBlobRef = useRef<Blob | null>(null)
   const conflictEtagRef = useRef<string | null>(null)
+  const isCloudflare = config.providerKind === 'cloudflare'
 
-  const buildProvider = () =>
-    new WebDavProvider({
+  const buildProvider = async (): Promise<SyncProvider> => {
+    if (isCloudflare) {
+      const token = await deriveSyncToken(passphrase)
+      return new CloudflareSyncProvider({ workerUrl: config.workerUrl.trim(), token })
+    }
+    return new WebDavProvider({
       server: config.server.trim(),
       username: config.username.trim(),
       appPassword,
       dir: config.dir.trim() || 'xinlu',
     })
+  }
 
   const validate = (): string | null => {
-    if (!config.server.trim()) return '请先填写 WebDAV 服务器地址。'
-    if (!config.username.trim()) return '请先填写账号（坚果云为注册邮箱）。'
-    if (!appPassword) return '请先填写应用密码。'
+    if (isCloudflare) {
+      if (!config.workerUrl.trim()) return '请先填写你的 Worker 地址。'
+    } else {
+      if (!config.server.trim()) return '请先填写 WebDAV 服务器地址。'
+      if (!config.username.trim()) return '请先填写账号（坚果云为注册邮箱）。'
+      if (!appPassword) return '请先填写应用密码。'
+    }
     if (passphrase.length < 8) return '同步口令至少需要 8 个字符（与备份口令同一套规则）。'
     return null
   }
@@ -445,11 +457,11 @@ function SyncSection() {
     setStatus(message)
   }
 
-  const doPush = async (provider: WebDavProvider) => {
+  const doPush = async (provider: SyncProvider) => {
     const blob = await exportBackup(passphrase)
     const result = await provider.put(REMOTE_VAULT_FILE, blob)
     const etag = result.etag ?? (await provider.head(REMOTE_VAULT_FILE))?.etag ?? null
-    finishSync(etag, '已把本机密文推送到云端。在另一台设备上用同一账号与同步口令即可拉取。')
+    finishSync(etag, '已把本机密文推送到云端。在另一台设备上填同样的地址与同步口令即可拉取。')
   }
 
   const doPull = async (blob: Blob, etag: string | null) => {
@@ -468,7 +480,7 @@ function SyncSection() {
     setError('')
     setStatus('')
     try {
-      const provider = buildProvider()
+      const provider = await buildProvider()
       await provider.ensureDir()
       const state = loadSyncState()
 
@@ -516,17 +528,25 @@ function SyncSection() {
   }
 
   const testConnection = async () => {
-    if (!config.server.trim() || !config.username.trim() || !appPassword) {
-      setError('先填写服务器地址、账号和应用密码，再测试连接。')
-      setStatus('')
-      return
-    }
     setBusy(true)
     setError('')
     setStatus('')
     try {
-      await buildProvider().testConnection()
-      setStatus('连接成功，账号与应用密码可用。')
+      if (isCloudflare) {
+        if (!config.workerUrl.trim()) throw new Error('请先填写你的 Worker 地址。')
+        await new CloudflareSyncProvider({ workerUrl: config.workerUrl.trim(), token: 'connection-test' }).testConnection()
+      } else {
+        if (!config.server.trim() || !config.username.trim() || !appPassword) {
+          throw new Error('先填写服务器地址、账号和应用密码，再测试连接。')
+        }
+        await new WebDavProvider({
+          server: config.server.trim(),
+          username: config.username.trim(),
+          appPassword,
+          dir: config.dir.trim() || 'xinlu',
+        }).testConnection()
+      }
+      setStatus('连接成功，同步服务可用。')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '连接失败。')
     } finally {
@@ -544,48 +564,96 @@ function SyncSection() {
     <section className="settings-section">
       <div className="section-title">
         <RefreshCw size={19} />
-        <h2>跨端同步（WebDAV）</h2>
+        <h2>跨端同步</h2>
       </div>
       <p className="settings-description">
-        可选功能。用你自己的 WebDAV 网盘（例如坚果云）在多台设备间同步：上传的始终是与加密备份同一种密文，服务器看不到内容。注意：坚果云没有开放浏览器跨域，网页直连会被拦截，需要改用支持跨域的 WebDAV，或把你自己的代理地址填在服务器地址里。
+        可选功能。在多台设备间同步同一份密文：上传的始终是与加密备份同一种密文，服务器看不到内容，同步口令也不经过网络。每台设备填同样的地址与口令即可。
       </p>
 
-      <label className="field">
-        <span>服务器地址</span>
-        <input
-          value={config.server}
-          onChange={(event) => setConfig({ ...config, server: event.target.value })}
-          placeholder="https://dav.jianguoyun.com/dav/"
-          autoComplete="url"
-        />
-      </label>
-      <label className="field">
-        <span>账号</span>
-        <input
-          value={config.username}
-          onChange={(event) => setConfig({ ...config, username: event.target.value })}
-          placeholder="坚果云为注册邮箱"
-          autoComplete="username"
-        />
-      </label>
-      <label className="field">
-        <span>应用密码</span>
-        <input
-          type="password"
-          value={appPassword}
-          onChange={(event) => setAppPassword(event.target.value)}
-          placeholder="在网盘网页版生成，不是登录密码"
-          autoComplete="current-password"
-        />
-      </label>
-      <label className="field">
-        <span>远程目录</span>
-        <input
-          value={config.dir}
-          onChange={(event) => setConfig({ ...config, dir: event.target.value })}
-          placeholder="xinlu"
-        />
-      </label>
+      <div className="form-switch" role="group" aria-label="同步方式">
+        <button
+          type="button"
+          className={isCloudflare ? 'active' : ''}
+          onClick={() => setConfig({ ...config, providerKind: 'cloudflare' })}
+        >
+          Cloudflare 同步
+        </button>
+        <button
+          type="button"
+          className={!isCloudflare ? 'active' : ''}
+          onClick={() => setConfig({ ...config, providerKind: 'webdav' })}
+        >
+          WebDAV 网盘
+        </button>
+      </div>
+
+      {isCloudflare ? (
+        <>
+          <label className="field">
+            <span>Worker 地址</span>
+            <input
+              value={config.workerUrl}
+              onChange={(event) => setConfig({ ...config, workerUrl: event.target.value })}
+              placeholder="https://xinlu-sync.你的子域名.workers.dev"
+              autoComplete="url"
+            />
+          </label>
+          <p className="settings-description">
+            部署在你自己的 Cloudflare 账号里（Worker + KV 存储），不需要网盘账号。还没有部署的话，先让 Muse 帮你在 Cloudflare 里建好，再把地址填到这里。
+          </p>
+        </>
+      ) : (
+        <>
+          <label className="field">
+            <span>服务器地址</span>
+            <input
+              value={config.server}
+              onChange={(event) => setConfig({ ...config, server: event.target.value })}
+              placeholder="https://dav.jianguoyun.com/dav/"
+              autoComplete="url"
+            />
+          </label>
+          <label className="field">
+            <span>账号</span>
+            <input
+              value={config.username}
+              onChange={(event) => setConfig({ ...config, username: event.target.value })}
+              placeholder="坚果云为注册邮箱"
+              autoComplete="username"
+            />
+          </label>
+          <label className="field">
+            <span>应用密码</span>
+            <input
+              type="password"
+              value={appPassword}
+              onChange={(event) => setAppPassword(event.target.value)}
+              placeholder="在网盘网页版生成，不是登录密码"
+              autoComplete="current-password"
+            />
+          </label>
+          <label className="field">
+            <span>远程目录</span>
+            <input
+              value={config.dir}
+              onChange={(event) => setConfig({ ...config, dir: event.target.value })}
+              placeholder="xinlu"
+            />
+          </label>
+          <label className="check-field">
+            <input
+              type="checkbox"
+              checked={config.rememberPassword}
+              onChange={(event) => setConfig({ ...config, rememberPassword: event.target.checked })}
+            />
+            <span>记住应用密码（保存在这台设备的浏览器里，方便下次同步；同步口令永不保存）</span>
+          </label>
+          <p className="settings-description">
+            注意：坚果云没有开放浏览器跨域，网页直连会被拦截，需要改用支持跨域的 WebDAV，或经你自己的代理地址访问（把代理地址填在服务器地址里）。
+          </p>
+        </>
+      )}
+
       <label className="field">
         <span>
           <KeyRound size={15} />
@@ -598,14 +666,6 @@ function SyncSection() {
           placeholder="至少 8 个字符，每台设备用同一个"
           autoComplete="new-password"
         />
-      </label>
-      <label className="check-field">
-        <input
-          type="checkbox"
-          checked={config.rememberPassword}
-          onChange={(event) => setConfig({ ...config, rememberPassword: event.target.checked })}
-        />
-        <span>记住应用密码（保存在这台设备的浏览器里，方便下次同步；同步口令永不保存）</span>
       </label>
 
       <div className="export-actions">

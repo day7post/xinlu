@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { decideSync, loadSyncConfig, saveSyncConfig } from '../lib/sync'
 import { joinUrl, parseContentLength, parseEtag, parseLastModified } from '../lib/webdav'
 
@@ -22,6 +22,8 @@ describe('同步决策', () => {
 describe('同步设置', () => {
   it('不记住密码时不落盘应用密码', () => {
     saveSyncConfig({
+      providerKind: 'webdav',
+      workerUrl: '',
       server: 'https://example.com/dav/',
       username: 'a@b.c',
       dir: 'xinlu',
@@ -35,6 +37,8 @@ describe('同步设置', () => {
 
   it('记住密码时可读回', () => {
     saveSyncConfig({
+      providerKind: 'webdav',
+      workerUrl: '',
       server: 'https://example.com/dav/',
       username: 'a@b.c',
       dir: 'xinlu',
@@ -63,5 +67,40 @@ describe('WebDAV 工具', () => {
     expect(parseContentLength(xml)).toBe(2048)
     expect(parseLastModified(xml)).toContain('2026')
     expect(parseEtag('<d:multistatus/>')).toBeNull()
+  })
+})
+
+import { CloudflareSyncProvider, deriveSyncToken } from '../lib/cloudflare'
+
+describe('Cloudflare 同步提供方', () => {
+  it('令牌由口令稳定派生', async () => {
+    const first = await deriveSyncToken('correct horse battery')
+    const second = await deriveSyncToken('correct horse battery')
+    const other = await deriveSyncToken('another passphrase')
+    expect(first).toBe(second)
+    expect(first).toMatch(/^[0-9a-f]{64}$/)
+    expect(other).not.toBe(first)
+  })
+
+  it('head 读取版本元数据，404 视为无数据', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/sync/meta')) {
+        return new Response(JSON.stringify({ version: 3, updatedAt: '2026-10-27T00:00:00.000Z', size: 128 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: '"v3"' },
+        })
+      }
+      return new Response('{}', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = new CloudflareSyncProvider({ workerUrl: 'https://sync.example.workers.dev/', token: 't'.repeat(64) })
+    const info = await provider.head('vault.xinlu')
+    expect(info?.etag).toBe('"v3"')
+    expect(info?.size).toBe(128)
+
+    const emptyMock = vi.fn(async () => new Response(JSON.stringify({ exists: false }), { status: 404 }))
+    vi.stubGlobal('fetch', emptyMock)
+    expect(await provider.head('vault.xinlu')).toBeNull()
+    vi.unstubAllGlobals()
   })
 })
