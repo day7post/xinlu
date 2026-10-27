@@ -15,6 +15,7 @@ import {
   createVault,
   discardDraft,
   getAllReferencedMediaIds,
+  getDraftAnchorItem,
   purgeExpiredTrash,
   removeAnchorCompletely,
   removeHeartlineCompletely,
@@ -39,6 +40,7 @@ import {
   type StoredMedia,
 } from '../lib/db'
 import { createEncryptedBackup, decryptBackup } from '../lib/backup'
+import { buildDemoVault, hasDemoData } from '../lib/demo'
 import { base64ToBlob, prepareMediaFile } from '../lib/media'
 import { createId } from '../lib/id'
 
@@ -77,6 +79,7 @@ interface VaultContextValue {
   exportBackup: (passphrase: string) => Promise<Blob>
   importBackup: (file: File, passphrase: string) => Promise<void>
   clearEverything: () => Promise<void>
+  seedDemo: () => { ok: boolean; message?: string }
 }
 
 const VaultContext = createContext<VaultContextValue | null>(null)
@@ -249,6 +252,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setVault(next)
   }
 
+  const seedDemo: VaultContextValue['seedDemo'] = () => {
+    const current = dataRef.current
+    if (!current) return { ok: false, message: '资料尚未准备好。' }
+    if (hasDemoData(current)) return { ok: false, message: '示例已经在了，去心图里看看。' }
+    if (getDraftAnchorItem(current)) {
+      return { ok: false, message: '你有一枚还没写完的心锚，先写完或放弃它，再载入示例。' }
+    }
+    setVault(buildDemoVault(current))
+    return { ok: true }
+  }
+
   const clearEverything = async () => {
     await clearLocalData()
     setVault({
@@ -285,6 +299,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         exportBackup,
         importBackup,
         clearEverything,
+        seedDemo,
       }}
     >
       {children}

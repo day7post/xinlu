@@ -1,32 +1,57 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
-import { AnchorDetailPage } from './pages/AnchorDetailPage'
-import { ConnectPage } from './pages/ConnectPage'
-import { EditorPage } from './pages/EditorPage'
-import { HeartlineDetailPage } from './pages/HeartlineDetailPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { SearchPage } from './pages/SearchPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { TimelinePage } from './pages/TimelinePage'
+import { LoadingScreen } from './components/LoadingScreen'
 import { VaultProvider } from './state/VaultContext'
+
+const AnchorDetailPage = lazy(() =>
+  import('./pages/AnchorDetailPage').then((module) => ({ default: module.AnchorDetailPage })),
+)
+const ConnectPage = lazy(() =>
+  import('./pages/ConnectPage').then((module) => ({ default: module.ConnectPage })),
+)
+const EditorPage = lazy(() =>
+  import('./pages/EditorPage').then((module) => ({ default: module.EditorPage })),
+)
+const HeartlineDetailPage = lazy(() =>
+  import('./pages/HeartlineDetailPage').then((module) => ({ default: module.HeartlineDetailPage })),
+)
+const HistoryPage = lazy(() =>
+  import('./pages/HistoryPage').then((module) => ({ default: module.HistoryPage })),
+)
+const SearchPage = lazy(() =>
+  import('./pages/SearchPage').then((module) => ({ default: module.SearchPage })),
+)
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+)
+const TimelinePage = lazy(() =>
+  import('./pages/TimelinePage').then((module) => ({ default: module.TimelinePage })),
+)
+const GraphPage = lazy(() =>
+  import('./pages/GraphPage').then((module) => ({ default: module.GraphPage })),
+)
 
 function App() {
   return (
     <VaultProvider>
       <BrowserRouter basename="/xinlu">
-        <Routes>
-          <Route path="/editor/:anchorId" element={<EditorPage />} />
-          <Route element={<AppShell />}>
-            <Route index element={<TimelinePage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/anchor/:anchorId" element={<AnchorDetailPage />} />
-            <Route path="/anchor/:anchorId/history" element={<HistoryPage />} />
-            <Route path="/connect/:anchorId" element={<ConnectPage />} />
-            <Route path="/line/:lineId" element={<HeartlineDetailPage />} />
-            <Route path="*" element={<TimelinePage />} />
-          </Route>
-        </Routes>
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/editor/:anchorId" element={<EditorPage />} />
+            <Route element={<AppShell />}>
+              <Route index element={<TimelinePage />} />
+              <Route path="/graph" element={<GraphPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/anchor/:anchorId" element={<AnchorDetailPage />} />
+              <Route path="/anchor/:anchorId/history" element={<HistoryPage />} />
+              <Route path="/connect/:anchorId" element={<ConnectPage />} />
+              <Route path="/line/:lineId" element={<HeartlineDetailPage />} />
+              <Route path="*" element={<TimelinePage />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </VaultProvider>
   )

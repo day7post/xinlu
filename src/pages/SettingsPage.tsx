@@ -5,16 +5,20 @@ import {
   CheckCircle2,
   Database,
   Download,
+  FileText,
   HardDrive,
   KeyRound,
   LockKeyhole,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react'
 import { HEARTLINE_META } from '../types'
 import { deriveSummary, getLatestRevision } from '../lib/domain'
+import { buildMarkdownExport, buildPlainExport } from '../lib/export'
+import { hasDemoData } from '../lib/demo'
 import { downloadBlob } from '../lib/media'
 import { useVault } from '../state/VaultContext'
 import { LoadingScreen } from '../components/LoadingScreen'
@@ -30,6 +34,7 @@ export function SettingsPage() {
     permanentlyDeleteAnchor,
     restoreDeletedLine,
     permanentlyDeleteLine,
+    seedDemo,
   } = useVault()
   const [passphrase, setPassphrase] = useState('')
   const [importPassphrase, setImportPassphrase] = useState('')
@@ -71,6 +76,36 @@ export function SettingsPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const downloadPlain = (kind: 'json' | 'markdown') => {
+    setError('')
+    setMessage('')
+    try {
+      const date = new Date().toISOString().slice(0, 10)
+      if (kind === 'json') {
+        downloadBlob(
+          new Blob([JSON.stringify(buildPlainExport(data), null, 2)], { type: 'application/json' }),
+          `心络导出-${date}.json`,
+        )
+      } else {
+        downloadBlob(
+          new Blob([buildMarkdownExport(data)], { type: 'text/markdown' }),
+          `心络导出-${date}.md`,
+        )
+      }
+      setMessage('明文导出已经下载。注意：明文没有加密，请妥善保管，不要随手转发。')
+    } catch {
+      setError('导出没有成功。')
+    }
+  }
+
+  const loadDemo = () => {
+    setError('')
+    setMessage('')
+    const result = seedDemo()
+    if (result.ok) setMessage('示例已经载入。去时间轴或心图看看，示例都带「示例」标签，可随时删除。')
+    else setError(result.message ?? '示例载入失败。')
   }
 
   const restoreBackup = async (file: File | undefined) => {
@@ -280,6 +315,39 @@ export function SettingsPage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="settings-section">
+        <div className="section-title">
+          <FileText size={19} />
+          <h2>明文导出</h2>
+        </div>
+        <p className="settings-description">
+          把文字内容导出成能直接打开阅读的文件。明文没有加密，请妥善保管；照片不在明文导出里，包含照片的完整恢复请用上面的加密备份。
+        </p>
+        <div className="export-actions">
+          <button className="secondary-button wide" type="button" onClick={() => downloadPlain('markdown')}>
+            <Download size={17} />
+            导出 Markdown（适合阅读与打印）
+          </button>
+          <button className="secondary-button wide" type="button" onClick={() => downloadPlain('json')}>
+            <Download size={17} />
+            导出 JSON（适合留存与迁移）
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="section-title">
+          <Sparkles size={19} />
+          <h2>示例数据</h2>
+        </div>
+        <p className="settings-description">
+          载入一组虚构的心锚与心线，先看清时间轴和心图长什么样。示例都带「示例」标签，可随时逐条删除。
+        </p>
+        <button className="secondary-button wide" type="button" onClick={loadDemo} disabled={hasDemoData(data)}>
+          {hasDemoData(data) ? '示例已经在了' : '载入示例'}
+        </button>
       </section>
 
       <section className="settings-section danger-zone">

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { BookOpenText, Database, Home, Plus, Search, Settings, WifiOff } from 'lucide-react'
+import { BookOpenText, Database, Home, Network, Plus, Search, Settings, WifiOff } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useVault } from '../state/VaultContext'
 
 const navItems = [
   { to: '/', label: '时间轴', icon: Home, end: true },
+  { to: '/graph', label: '心图', icon: Network, end: false },
   { to: '/search', label: '查找', icon: Search, end: false },
   { to: '/settings', label: '资料', icon: Settings, end: false },
 ]

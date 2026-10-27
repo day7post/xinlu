@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownUp, Link2, Plus, Sparkles } from 'lucide-react'
+import { ArrowDownUp, Link2, Network, Plus, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { HEARTLINE_META, type AnchorWithRevision } from '../types'
 import { deriveSummary, getActiveAnchorItems, getDraftAnchorItem } from '../lib/domain'
@@ -14,7 +14,8 @@ interface Point {
 }
 
 export function TimelinePage() {
-  const { data, loading, createDraft } = useVault()
+  const { data, loading, createDraft, seedDemo } = useVault()
+  const [demoMessage, setDemoMessage] = useState('')
   const navigate = useNavigate()
   const [direction, setDirection] = useState<'newest' | 'oldest'>('newest')
   const [visibleCount, setVisibleCount] = useState(80)
@@ -94,14 +95,20 @@ export function TimelinePage() {
           <h1>时间轴</h1>
           <p>{allItems.length ? `已留下 ${allItems.length} 枚心锚` : '从一段真实经历开始'}</p>
         </div>
-        <button
-          className="sort-button"
-          type="button"
-          onClick={() => setDirection((value) => (value === 'newest' ? 'oldest' : 'newest'))}
-        >
-          <ArrowDownUp size={16} />
-          {direction === 'newest' ? '最新在前' : '最早在前'}
-        </button>
+        <div className="header-actions">
+          <button className="sort-button" type="button" onClick={() => navigate('/graph')}>
+            <Network size={16} />
+            看心图
+          </button>
+          <button
+            className="sort-button"
+            type="button"
+            onClick={() => setDirection((value) => (value === 'newest' ? 'oldest' : 'newest'))}
+          >
+            <ArrowDownUp size={16} />
+            {direction === 'newest' ? '最新在前' : '最早在前'}
+          </button>
+        </div>
       </header>
 
       {draft && (
@@ -129,11 +136,41 @@ export function TimelinePage() {
           <p className="eyebrow">不需要从完整故事开始</p>
           <h2>留下一句话就够了</h2>
           <p>一句话、一张照片、一个场景，都可以成为第一枚心锚。</p>
-          <button className="primary-button" type="button" onClick={addAnchor}>
-            <Plus size={18} />
-            写下第一枚心锚
-          </button>
-          <small>内容只保存在这台设备上，可以随时停下。</small>
+          <div className="demo-steps" aria-label="使用步骤">
+            <span>
+              <strong>第一步</strong>
+              写心锚
+            </span>
+            <span>
+              <strong>第二步</strong>
+              连心线
+            </span>
+            <span>
+              <strong>第三步</strong>
+              看心图
+            </span>
+          </div>
+          <div className="empty-actions">
+            <button className="primary-button" type="button" onClick={addAnchor}>
+              <Plus size={18} />
+              写下第一枚心锚
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                const result = seedDemo()
+                if (result.ok) navigate('/graph')
+                else setDemoMessage(result.message ?? '示例载入失败。')
+              }}
+            >
+              <Network size={17} />
+              先看看示例
+            </button>
+          </div>
+          <small>
+            {demoMessage || '内容只保存在这台设备上，可以随时停下。示例是虚构内容，带「示例」标签，可随时删除。'}
+          </small>
         </section>
       ) : (
         <div className="timeline-track" ref={trackRef}>

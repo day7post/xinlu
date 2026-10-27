@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import { deriveSummary, getActiveAnchorItems } from '../lib/domain'
+import { getActiveAnchorItems } from '../lib/domain'
 import { getTimeSortValue } from '../lib/date'
 import { useVault } from '../state/VaultContext'
 import { AnchorMiniCard } from '../components/AnchorMiniCard'
@@ -144,7 +144,7 @@ export function SearchPage() {
       )}
 
       <p className="search-count-note">
-        当前共 {allItems.length} 枚心锚，其中 {results.filter(({ revision }) => deriveSummary(revision.content)).length} 枚符合查看条件。
+        共 {allItems.length} 枚心锚，当前显示 {results.length} 枚。
       </p>
     </div>
   )
