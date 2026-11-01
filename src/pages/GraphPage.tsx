@@ -121,15 +121,19 @@ export function GraphPage() {
     if (id) navigate(`/editor/${id}`)
   }
 
+  // a is the parent (inner) point, b the child (outer) point. The control
+  // point is pushed perpendicular to the branch, so every branch curls in
+  // the same rotational direction — a dendrite, not a straight spoke.
   const branchPath = (a: { x: number; y: number }, b: { x: number; y: number }, lift: number) => {
     const midX = (a.x + b.x) / 2
     const midY = (a.y + b.y) / 2
-    const dx = midX - layout.center.x
-    const dy = midY - layout.center.y
-    const length = Math.max(1, Math.hypot(dx, dy))
-    const distance = Math.hypot(b.x - a.x, b.y - a.y)
-    const controlX = midX + (dx / length) * distance * lift
-    const controlY = midY + (dy / length) * distance * lift
+    const edgeX = b.x - a.x
+    const edgeY = b.y - a.y
+    const distance = Math.max(1, Math.hypot(edgeX, edgeY))
+    const perpX = edgeY / distance
+    const perpY = -edgeX / distance
+    const controlX = midX + perpX * distance * lift
+    const controlY = midY + perpY * distance * lift
     return `M ${a.x} ${a.y} Q ${controlX} ${controlY} ${b.x} ${b.y}`
   }
 
@@ -240,10 +244,12 @@ export function GraphPage() {
                 if (!isBranch && !matched) return null
                 const dimmed = !matched || !touchesSelected
                 if (isBranch) {
+                  const parentPoint = childId === line.anchorAId ? b : a
+                  const childPoint = childId === line.anchorAId ? a : b
                   return (
                     <path
                       key={line.id}
-                      d={branchPath(a, b, 0.16)}
+                      d={branchPath(parentPoint, childPoint, 0.22)}
                       className={`graph-branch${dimmed ? ' dimmed' : ''}`}
                       style={{
                         stroke: HEARTLINE_META[line.type].color,
@@ -255,7 +261,7 @@ export function GraphPage() {
                 return (
                   <path
                     key={line.id}
-                    d={branchPath(a, b, 0.08)}
+                    d={branchPath(a, b, 0.12)}
                     className={`graph-cross${dimmed ? ' dimmed' : ''}`}
                     style={{ stroke: HEARTLINE_META[line.type].color }}
                   />
@@ -317,10 +323,10 @@ export function GraphPage() {
               </div>
               <div className="graph-panel-actions">
                 <div className="graph-pager" role="group" aria-label="按时间切换心锚">
-                  <button type="button" onClick={() => stepSelection(-1)} aria-label="上一枚（更早）">
+                  <button type="button" onClick={() => stepSelection(-1)} aria-label="上一枚心锚">
                     <ChevronLeft size={16} />
                   </button>
-                  <button type="button" onClick={() => stepSelection(1)} aria-label="下一枚（更晚）">
+                  <button type="button" onClick={() => stepSelection(1)} aria-label="下一枚心锚">
                     <ChevronRight size={16} />
                   </button>
                 </div>

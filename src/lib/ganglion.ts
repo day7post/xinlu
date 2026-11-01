@@ -135,15 +135,22 @@ export function computeGanglionLayout(
     const ringGap = tree.maxDepth > 0 ? maxRadius / tree.maxDepth : 0
     const rings: number[] = []
     for (let depth = 1; depth <= tree.maxDepth; depth += 1) rings.push(ringGap * depth)
-    const place = (id: string, from: number, to: number) => {
+    const place = (id: string, from: number, to: number, centerAngle?: number) => {
       const depth = tree.depthOf.get(id) ?? 0
-      const angle = (from + to) / 2 + (hashSeed(`${id}:a`) - 0.5) * (to - from) * 0.18
+      const angle =
+        centerAngle ??
+        (from + to) / 2 + (hashSeed(`${id}:a`) - 0.5) * (to - from) * 0.18
       const radius = depth * ringGap * (0.92 + hashSeed(`${id}:r`) * 0.16)
       points.set(id, {
         x: Math.round(origin.x + Math.cos(angle) * radius),
         y: Math.round(origin.y + Math.sin(angle) * radius),
       })
       const children = tree.childrenOf.get(id) ?? []
+      if (children.length === 1) {
+        // A lone branch keeps growing with a steady curl, like a dendrite.
+        place(children[0], from, to, angle + 0.55)
+        return
+      }
       const totalLeaves = children.reduce((sum, child) => sum + leafCount(tree, child), 0)
       let cursor = from
       for (const child of children) {
@@ -154,12 +161,16 @@ export function computeGanglionLayout(
     }
     points.set(tree.root, { x: Math.round(origin.x), y: Math.round(origin.y) })
     const rootChildren = tree.childrenOf.get(tree.root) ?? []
-    const totalLeaves = rootChildren.reduce((sum, child) => sum + leafCount(tree, child), 0)
-    let cursor = startAngle
-    for (const child of rootChildren) {
-      const share = (sweep * leafCount(tree, child)) / Math.max(1, totalLeaves)
-      place(child, cursor, cursor + share)
-      cursor += share
+    if (rootChildren.length === 1) {
+      place(rootChildren[0], startAngle, startAngle + sweep, startAngle + sweep / 2 + 0.55)
+    } else {
+      const totalLeaves = rootChildren.reduce((sum, child) => sum + leafCount(tree, child), 0)
+      let cursor = startAngle
+      for (const child of rootChildren) {
+        const share = (sweep * leafCount(tree, child)) / Math.max(1, totalLeaves)
+        place(child, cursor, cursor + share)
+        cursor += share
+      }
     }
     for (const [child, parent] of tree.parentOf) parentOf.set(child, parent)
     for (const [id, depth] of tree.depthOf) depthOf.set(id, depth)
