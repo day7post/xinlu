@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { LoadingScreen } from './components/LoadingScreen'
 import { VaultProvider } from './state/VaultContext'
 
@@ -31,11 +32,15 @@ const TimelinePage = lazy(() =>
 const GraphPage = lazy(() =>
   import('./pages/GraphPage').then((module) => ({ default: module.GraphPage })),
 )
+const NotFoundPage = lazy(() =>
+  import('./pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
+)
 
 function App() {
   return (
     <VaultProvider>
       <BrowserRouter basename="/xinlu">
+        <ErrorBoundary>
         <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/editor/:anchorId" element={<EditorPage />} />
@@ -48,10 +53,11 @@ function App() {
               <Route path="/anchor/:anchorId/history" element={<HistoryPage />} />
               <Route path="/connect/:anchorId" element={<ConnectPage />} />
               <Route path="/line/:lineId" element={<HeartlineDetailPage />} />
-              <Route path="*" element={<TimelinePage />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </VaultProvider>
   )

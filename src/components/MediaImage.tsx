@@ -3,6 +3,17 @@ import { Image as ImageIcon } from 'lucide-react'
 import { getStoredMedia } from '../lib/db'
 
 const mediaUrlCache = new Map<string, string>()
+const MAX_CACHED_URLS = 30
+
+function cacheMediaUrl(key: string, url: string) {
+  mediaUrlCache.set(key, url)
+  while (mediaUrlCache.size > MAX_CACHED_URLS) {
+    const oldestKey = mediaUrlCache.keys().next().value as string
+    const oldestUrl = mediaUrlCache.get(oldestKey)
+    mediaUrlCache.delete(oldestKey)
+    if (oldestUrl?.startsWith('blob:')) URL.revokeObjectURL(oldestUrl)
+  }
+}
 
 export function MediaImage({
   mediaId,
@@ -26,7 +37,7 @@ export function MediaImage({
     void getStoredMedia(mediaId).then((item) => {
       if (!item || cancelled) return
       const url = useOriginal ? URL.createObjectURL(item.blob) : item.record.thumbnailDataUrl
-      mediaUrlCache.set(cacheKey, url)
+      cacheMediaUrl(cacheKey, url)
       setSource(url)
     })
     return () => {

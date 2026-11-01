@@ -384,7 +384,7 @@ export function SettingsPage() {
           <span />
           <span />
         </span>
-        <p>心络 MVP · 本地匿名版</p>
+        <p>心络 v{__APP_VERSION__} · 构建于 {formatShortDate(__BUILD_TIME__)}</p>
         <small>你的感受不是诊断结果，这里也不替你定义完成。</small>
       </footer>
     </div>

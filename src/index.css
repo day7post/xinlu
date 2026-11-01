@@ -18,7 +18,7 @@
   --shadow-sm: 0 8px 22px rgba(67, 58, 45, 0.06);
   --shadow-md: 0 18px 55px rgba(67, 58, 45, 0.1);
   --sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
-  --serif: "Songti SC", "Noto Serif CJK SC", "STSong", Georgia, serif;
+  --serif: "Songti SC", "Noto Serif CJK SC", "STSong", "SimSun", Georgia, serif;
   font-family: var(--sans);
   color: var(--ink);
   background: var(--paper);
@@ -559,3 +559,11 @@ button:disabled, .disabled { cursor: not-allowed; opacity: 0.5; }
     animation-iteration-count: 1 !important;
   }
 }
+
+.error-page { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 72px 22px 40px; text-align: center; }
+.error-icon { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-deep); }
+.error-page h1 { margin: 4px 0 0; font-family: var(--serif); font-size: 24px; font-weight: 600; }
+.error-page p { margin: 0; max-width: 420px; color: var(--ink-soft); font-size: 14px; line-height: 1.7; }
+.error-detail { padding: 8px 12px; border-radius: 10px; background: var(--surface-soft); color: var(--danger) !important; font-size: 12px !important; word-break: break-word; }
+.error-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
+.error-actions .primary-button, .error-actions .secondary-button { display: inline-flex; align-items: center; gap: 7px; width: auto; padding: 10px 18px; }
