@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, Link2, Network, Plus } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, Link2, Network, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { HEARTLINE_META, type HeartlineType } from '../types'
 import { deriveSummary, getActiveAnchorItems } from '../lib/domain'
-import { formatMemoryTime } from '../lib/date'
-import { computeGraphLayout } from '../lib/graph'
+import { formatMemoryTime, sortTimeline } from '../lib/date'
+import { computeGanglionLayout } from '../lib/ganglion'
 import { useVault } from '../state/VaultContext'
 import { LoadingScreen } from '../components/LoadingScreen'
 
@@ -15,6 +15,38 @@ type TypeFilter = 'all' | HeartlineType
 
 function truncate(value: string, max = 9): string {
   return value.length > max ? `${value.slice(0, max)}…` : value
+}
+
+function hashUnit(seed: string): number {
+  let hash = 2166136261
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0) / 4294967295
+}
+
+interface DustStar {
+  x: number
+  y: number
+  r: number
+  opacity: number
+  warm: boolean
+}
+
+/** Faint warm specks on the paper, so the veins sit on a living surface. */
+function buildDust(count = 72): DustStar[] {
+  const stars: DustStar[] = []
+  for (let index = 0; index < count; index += 1) {
+    stars.push({
+      x: Math.round(hashUnit(`dust-x-${index}`) * GRAPH_WIDTH),
+      y: Math.round(hashUnit(`dust-y-${index}`) * GRAPH_HEIGHT),
+      r: 0.8 + hashUnit(`dust-r-${index}`) * 1.5,
+      opacity: 0.12 + hashUnit(`dust-o-${index}`) * 0.3,
+      warm: hashUnit(`dust-w-${index}`) > 0.45,
+    })
+  }
+  return stars
 }
 
 export function GraphPage() {
@@ -44,7 +76,7 @@ export function GraphPage() {
 
   const layout = useMemo(
     () =>
-      computeGraphLayout(
+      computeGanglionLayout(
         items.map((item) => ({ id: item.anchor.id, weight: degrees.get(item.anchor.id) ?? 0 })),
         allLines.map((line) => ({ a: line.anchorAId, b: line.anchorBId })),
         GRAPH_WIDTH,
@@ -53,10 +85,7 @@ export function GraphPage() {
     [items, allLines, degrees],
   )
 
-  const visibleLines = useMemo(
-    () => allLines.filter((line) => filter === 'all' || line.type === filter),
-    [allLines, filter],
-  )
+  const dust = useMemo(() => buildDust(), [])
 
   const neighbours = useMemo(() => {
     if (!selectedId) return new Set<string>()
@@ -68,14 +97,40 @@ export function GraphPage() {
     return result
   }, [allLines, selectedId])
 
+  const orderedByTime = useMemo(() => sortTimeline(items, 'oldest'), [items])
+
   if (loading || !data) return <LoadingScreen />
 
   const selected = selectedId ? itemById.get(selectedId) : undefined
   const isolated = items.filter((item) => (degrees.get(item.anchor.id) ?? 0) === 0)
+  const selectedIndex = selectedId
+    ? orderedByTime.findIndex((item) => item.anchor.id === selectedId)
+    : -1
+
+  const stepSelection = (step: number) => {
+    if (orderedByTime.length === 0) return
+    const nextIndex =
+      selectedIndex < 0
+        ? 0
+        : (selectedIndex + step + orderedByTime.length) % orderedByTime.length
+    setSelectedId(orderedByTime[nextIndex].anchor.id)
+  }
 
   const addAnchor = () => {
     const id = createDraft()
     if (id) navigate(`/editor/${id}`)
+  }
+
+  const branchPath = (a: { x: number; y: number }, b: { x: number; y: number }, lift: number) => {
+    const midX = (a.x + b.x) / 2
+    const midY = (a.y + b.y) / 2
+    const dx = midX - layout.center.x
+    const dy = midY - layout.center.y
+    const length = Math.max(1, Math.hypot(dx, dy))
+    const distance = Math.hypot(b.x - a.x, b.y - a.y)
+    const controlX = midX + (dx / length) * distance * lift
+    const controlY = midY + (dy / length) * distance * lift
+    return `M ${a.x} ${a.y} Q ${controlX} ${controlY} ${b.x} ${b.y}`
   }
 
   return (
@@ -85,8 +140,8 @@ export function GraphPage() {
         <h1>心图</h1>
         <p>
           {items.length > 0
-            ? `${items.length} 枚心锚，${allLines.length} 条心线。点一个节点，看它与谁相连。`
-            : '心锚连成心线之后，这里会长出一张属于你的网。'}
+            ? `${items.length} 枚心锚，${allLines.length} 条心线。连接最多的心锚是核，心线像脉络一样由此生长。`
+            : '心锚连成心线之后，这里会长出一张属于你的脉络。'}
         </p>
       </header>
 
@@ -134,40 +189,84 @@ export function GraphPage() {
             </div>
             <p className="graph-hint">
               <Network size={14} />
-              节点越大，连接越多
+              核越大，连接越多；粗枝是主脉络
             </p>
           </div>
 
-          <section className="graph-wrap" aria-label="心锚关系图">
+          <section className="graph-wrap" aria-label="心锚脉络图">
             <svg
               className="graph-svg"
               viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
               role="img"
-              aria-label={`共 ${items.length} 枚心锚、${visibleLines.length} 条当前可见心线`}
+              aria-label={`共 ${items.length} 枚心锚、${allLines.length} 条心线的心图`}
             >
-              {visibleLines.map((line) => {
-                const a = layout.get(line.anchorAId)
-                const b = layout.get(line.anchorBId)
+              <g className="graph-dust" aria-hidden="true">
+                {dust.map((star, index) => (
+                  <circle
+                    key={index}
+                    cx={star.x}
+                    cy={star.y}
+                    r={star.r}
+                    fill={star.warm ? '#b5823a' : '#3f6f67'}
+                    opacity={star.opacity}
+                  />
+                ))}
+              </g>
+              {layout.rings.map((radius) => (
+                <circle
+                  key={radius}
+                  cx={layout.center.x}
+                  cy={layout.center.y}
+                  r={radius}
+                  className="graph-ring"
+                  aria-hidden="true"
+                />
+              ))}
+              {allLines.map((line) => {
+                const a = layout.points.get(line.anchorAId)
+                const b = layout.points.get(line.anchorBId)
                 if (!a || !b) return null
-                const highlighted =
+                const isBranch =
+                  layout.parentOf.get(line.anchorAId) === line.anchorBId ||
+                  layout.parentOf.get(line.anchorBId) === line.anchorAId
+                const childId =
+                  layout.parentOf.get(line.anchorAId) === line.anchorBId
+                    ? line.anchorAId
+                    : line.anchorBId
+                const childDepth = layout.depthOf.get(childId) ?? 1
+                const matched = filter === 'all' || line.type === filter
+                const touchesSelected =
                   !selectedId || line.anchorAId === selectedId || line.anchorBId === selectedId
+                if (!isBranch && !matched) return null
+                const dimmed = !matched || !touchesSelected
+                if (isBranch) {
+                  return (
+                    <path
+                      key={line.id}
+                      d={branchPath(a, b, 0.16)}
+                      className={`graph-branch${dimmed ? ' dimmed' : ''}`}
+                      style={{
+                        stroke: HEARTLINE_META[line.type].color,
+                        strokeWidth: Math.max(1.4, 3.6 - childDepth * 0.65),
+                      }}
+                    />
+                  )
+                }
                 return (
-                  <line
+                  <path
                     key={line.id}
-                    x1={a.x}
-                    y1={a.y}
-                    x2={b.x}
-                    y2={b.y}
-                    className={highlighted ? 'graph-edge' : 'graph-edge dimmed'}
+                    d={branchPath(a, b, 0.08)}
+                    className={`graph-cross${dimmed ? ' dimmed' : ''}`}
                     style={{ stroke: HEARTLINE_META[line.type].color }}
                   />
                 )
               })}
               {items.map((item) => {
-                const point = layout.get(item.anchor.id)
+                const point = layout.points.get(item.anchor.id)
                 if (!point) return null
                 const degree = degrees.get(item.anchor.id) ?? 0
-                const radius = 11 + Math.min(11, degree * 2.2)
+                const isRoot = layout.rootId === item.anchor.id && degree > 0
+                const radius = isRoot ? 18 : 9 + Math.min(9, degree * 1.8)
                 const isSelected = selectedId === item.anchor.id
                 const dimmed = selectedId !== null && !isSelected && !neighbours.has(item.anchor.id)
                 return (
@@ -179,9 +278,11 @@ export function GraphPage() {
                     role="button"
                     aria-label={`${deriveSummary(item.revision.content)}，共 ${degree} 条连接`}
                   >
+                    <circle r={radius + 8} className="graph-node-halo" />
+                    {isRoot && <circle r={radius + 13} className="graph-root-ring" />}
                     <circle r={radius} className="graph-node-circle" />
-                    <circle r={3.2} className="graph-node-core" />
-                    <text y={radius + 16} className="graph-node-label">
+                    <circle r={isRoot ? 4.6 : 3.2} className="graph-node-core" />
+                    <text y={radius + 17} className="graph-node-label">
                       {truncate(deriveSummary(item.revision.content))}
                     </text>
                   </g>
@@ -215,6 +316,14 @@ export function GraphPage() {
                 )}
               </div>
               <div className="graph-panel-actions">
+                <div className="graph-pager" role="group" aria-label="按时间切换心锚">
+                  <button type="button" onClick={() => stepSelection(-1)} aria-label="上一枚（更早）">
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button type="button" onClick={() => stepSelection(1)} aria-label="下一枚（更晚）">
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
                 <button
                   className="primary-button"
                   type="button"
@@ -238,7 +347,7 @@ export function GraphPage() {
               <section className="graph-panel">
                 <div className="graph-panel-main">
                   <strong>还没有心线</strong>
-                  <small>打开任意一枚心锚，把它和另一段经历连起来，这张网就会开始生长。</small>
+                  <small>打开任意一枚心锚，把它和另一段经历连起来，脉络就会开始生长。</small>
                 </div>
                 <div className="graph-panel-actions">
                   <button className="primary-button" type="button" onClick={() => navigate('/')}>
